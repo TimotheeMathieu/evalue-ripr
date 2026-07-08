@@ -1,3 +1,7 @@
+"""
+In this example, we use the evalue_ripr package to project, in 2D, a distribution Ber(0.2) \otimes Ber(0.6) on product of Bernoulli distributions with parameters larger 1/2
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from evalue_ripr import RIP_FW_multi

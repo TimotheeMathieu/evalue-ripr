@@ -1,7 +1,10 @@
+"""
+In this example, we use the evalue_ripr package to project, in 2D, a distribution Ber(0.6) \otimes Ber(0.6) on product of Bernoulli distributions with one of its parameter smaller than 1/2
+"""
+
 import numpy as np
 import matplotlib.pyplot as plt
 from evalue_ripr import RIP_FW_multi
-
 from scipy.optimize import LinearConstraint
 
 d = 2
