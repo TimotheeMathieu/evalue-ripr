@@ -16,10 +16,10 @@ def lfq(p, x):
 
 def dfq_dp(p, x):
     p = np.clip(p, EPSILON, 1 - EPSILON)
-    f = fq(p, x)  # shape: (n_samples,)
-    term1 = x / p[np.newaxis, :]  # shape: (n_samples, n_p)
+    f = fq(p, x) 
+    term1 = x / p[np.newaxis, :] 
     term2 = (1 - x) / (1 - p[np.newaxis, :])
-    dL_dp = term1 - term2  # shape: (n_samples, n_p)
+    dL_dp = term1 - term2  
     return f[:, np.newaxis] * dL_dp
 
 def ll(p, mu, N):
@@ -56,39 +56,45 @@ def get_beta_prior(cons, init, d, rng, M = 1000, alpha = 1/2, beta = 1/2):
     Get independent beta prior conditioned on cons
     """
     prior = {"alpha": alpha*np.ones(d),
-             "beta": beta*np.ones(d)}
+             "beta": beta*np.ones(d),
+             "samples": None}
     prior = update_posterior(prior, M, d, cons, rng)
     return prior
 
-def posterior(pw1, x, cons, M=1000, rng=None):
+def posterior(pw1, x, cons=None, M=1000, rng=None):
     """
     x must be in {0,1}^d
     """
     alpha = pw1["alpha"]
     beta = pw1["beta"]
     d = len(alpha)
-    result = 0
-    samples2 = (x[np.newaxis, :] * pw1["samples"]  + (1-x[np.newaxis, :]) * (1-pw1["samples"]))
-    integrand = np.prod(samples2*2, axis=1) # the times 2 is for numerical purpose. divide by 2 at the end
-    mean_int = np.mean(integrand)
-    norm_cons=0
-    is_in_cell = pw1["isin_cell"]
+    if "samples" in pw1.keys():
+        # Approximate using a sample 
+        result = 0
+        samples2 = (x[np.newaxis, :] * pw1["samples"]  + (1-x[np.newaxis, :]) * (1-pw1["samples"]))
+        integrand = np.prod(samples2*2, axis=1) # the times 2 is for numerical purpose. divide by 2 at the end
+        mean_int = np.mean(integrand)
+        norm_cons=0
+        is_in_cell = pw1["isin_cell"]
+        expectation = (np.sum(integrand[is_in_cell]) + mean_int) / (len(is_in_cell)+1)
+        norm_cons = (np.sum(is_in_cell) + 1)/(len(samples2)+1)
+        return expectation / norm_cons / 2**d
+    else:
+        return np.prod(beta_fun(alpha+x, beta+1-x)/beta_fun(alpha, beta))
 
-    expectation = (np.sum(integrand[is_in_cell]) + mean_int) / (len(is_in_cell)+1)
-    norm_cons = (np.sum(is_in_cell) + 1)/(len(samples2)+1)
-    return expectation / norm_cons / 2**d
 
-def update_posterior(prior, M, d , constraints,  rng):
+def update_posterior(prior, M, d , constraints=None,  rng=None):
     posterior = deepcopy(prior)
-    norm_cons = 0
-    samples = np.array([stats.beta(posterior["alpha"][i],
-                                   posterior["beta"][i]).rvs(size=[M],random_state=rng) 
-                        for i in range(d)]).T
+    if "samples" in prior.keys():
+        norm_cons = 0
+        samples = np.array([stats.beta(posterior["alpha"][i],
+                                       posterior["beta"][i]).rvs(size=[M],random_state=rng) 
+                            for i in range(d)]).T
 
-    posterior["samples"] = samples
-    distancesu = [ np.max((cons.A @ (samples.T) - cons.ub[:,np.newaxis]).T,   axis=1) for cons in constraints]
-    distances = np.min(np.array(distancesu), axis = 0)
-    posterior["isin_cell"] = distances>0
+        posterior["samples"] = samples
+        distancesu = [ np.max((cons.A @ (samples.T) - cons.ub[:,np.newaxis]).T,   axis=1) for cons in constraints]
+        distances = np.min(np.array(distancesu), axis = 0)
+        posterior["isin_cell"] = distances>0
     return posterior
 
 def pwval(pw, x):
@@ -106,15 +112,14 @@ def Jq0_multi(p, pw1val, pw0val, xs):
 def DJq0_multi(p, pw1val, pw0val, xs):
     d = len(p)
     dfpval = dfq_dp(p, xs)
-    res = np.sum(dfpval * (pw1val / pw0val)[:,np.newaxis])
+    res = np.sum(dfpval * (pw1val / pw0val)[:,np.newaxis], axis=0)
     return res
-
 
 def kinf_multi(pw1val, pw0val):
     return np.sum(pw1val[pw1val != 0] * np.log(pw1val[pw1val != 0]  / pw0val[pw1val != 0] ))
 
 def RIP_FW_multi(constraints, inits, pw1, maxiter=300, 
-                 tol = 1e-5, use_posterior = True):
+                 tol = 1e-6, use_posterior = True):
     d = len(inits[0])
     xs = np.array(list(itertools.product([0,1], repeat=d)))
 
@@ -122,20 +127,17 @@ def RIP_FW_multi(constraints, inits, pw1, maxiter=300,
         pw1val = np.array([posterior(pw1, x, constraints) for x in xs])
     else:
         pw1val = pwval(pw1, xs)
-        
+
     for j in range(len(inits)):
         # Better initialization using point point projection
         if not use_posterior:
-            p = np.zeros(d)
-            for k in range(len(pw1["prior_support"])):
-                p = p + pw1["prior_support"][k] * pw1["prior_weights"][k]
+            p = np.mean(xs * pw1val[:,np.newaxis], axis = 0)
         else:
             p = pw1["alpha"]/(pw1["alpha"]+pw1["beta"])
 
         q,_ = RIP_point([constraints[j]], inits[j], p)
         inits[j] = q
-        print(q)
-
+        
     def lmo(pw0):
         minres = np.inf
         qres = inits[0]
