@@ -18,7 +18,7 @@ A2 = np.array([1,0])
 mycons2 = LinearConstraint(A2, 0, 1/2)
 
 # Initialization in this constraint set: should not be on boundary
-inits = [ np.array([0.6, 0.2]), np.array([0.2, 0.6])]
+inits = [ np.array([0.6, 0.4]), np.array([0.4, 0.6])]
 
 # Define point I want to project
 q = np.array([0.6, 0.6])
@@ -27,7 +27,7 @@ p, kinf = RIP_FW_multi([mycons1, mycons2], inits,
                         {"prior_support":[q], "prior_weights":[1]}, # We project a mixture proba with only one point in the support
                         use_posterior=False)
 
-print(p["prior_support"])
+print(p["prior_support"], kinf)
 fig, ax = plt.subplots()
 
 # Plot constraint set
